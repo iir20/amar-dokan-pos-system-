@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Product, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 import { StorageService } from '../services/storage';
 import { Plus, Edit2, Trash2, X, Save } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 interface InventoryProps {
   lang: Language;
@@ -10,20 +12,12 @@ interface InventoryProps {
 
 const Inventory: React.FC<InventoryProps> = ({ lang }) => {
   const t = TRANSLATIONS[lang];
-  const [products, setProducts] = useState<Product[]>([]);
+  // Reactive products list
+  const products = useLiveQuery(() => db.products.toArray(), []) || [];
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-
-  // Form State
   const [formData, setFormData] = useState<Partial<Product>>({});
-
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const loadProducts = () => {
-    setProducts(StorageService.getProducts());
-  };
 
   const handleOpenModal = (product?: Product) => {
     if (product) {
@@ -45,14 +39,13 @@ const Inventory: React.FC<InventoryProps> = ({ lang }) => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm(t.confirmDelete)) {
-      StorageService.deleteProduct(id);
-      loadProducts();
+      await StorageService.deleteProduct(id);
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const productToSave: Product = {
@@ -67,8 +60,7 @@ const Inventory: React.FC<InventoryProps> = ({ lang }) => {
       image: formData.image
     };
 
-    StorageService.saveProduct(productToSave);
-    loadProducts();
+    await StorageService.saveProduct(productToSave);
     setIsModalOpen(false);
   };
 
@@ -190,8 +182,6 @@ const Inventory: React.FC<InventoryProps> = ({ lang }) => {
                       onChange={e => setFormData({...formData, category: e.target.value})}
                     />
                 </div>
-                
-                {/* Barcode field removed */}
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>

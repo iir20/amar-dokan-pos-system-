@@ -2,22 +2,27 @@ import React, { useMemo } from 'react';
 import { Sale, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 import { Eye, Phone } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 interface DueListProps {
-  sales: Sale[];
+  sales: Sale[]; // Kept for prop signature but using live query
   lang: Language;
   onViewInvoice: (sale: Sale) => void;
 }
 
-const DueList: React.FC<DueListProps> = ({ sales, lang, onViewInvoice }) => {
+const DueList: React.FC<DueListProps> = ({ lang, onViewInvoice }) => {
   const t = TRANSLATIONS[lang];
+  
+  // Realtime Sales Fetch
+  const allSales = useLiveQuery(() => db.sales.toArray(), []) || [];
 
   // Filter sales that have a due amount > 0
   const dueSales = useMemo(() => {
-    return sales
+    return allSales
       .filter(sale => sale.dueAmount > 0)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [sales]);
+  }, [allSales]);
 
   return (
     <div className="p-6 h-full flex flex-col">

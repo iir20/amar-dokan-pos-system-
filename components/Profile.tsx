@@ -15,17 +15,20 @@ const Profile: React.FC<ProfileProps> = ({ lang }) => {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    const currentUser = StorageService.getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-      setFormData(currentUser);
-    }
+    const fetchUser = async () => {
+        const currentUser = await StorageService.getCurrentUser();
+        if (currentUser) {
+            setUser(currentUser);
+            setFormData(currentUser);
+        }
+    };
+    fetchUser();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData) {
-      StorageService.updateUser(formData);
+      await StorageService.updateUser(formData);
       setMessage(t.profileUpdated);
       setTimeout(() => setMessage(''), 3000);
     }

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Sale, Language, Expense } from '../types';
 import { TRANSLATIONS } from '../constants';
 import { 
@@ -6,21 +6,21 @@ import {
   LineChart, Line
 } from 'recharts';
 import { TrendingUp, DollarSign, ShoppingBag, AlertTriangle, UserMinus, Download, CreditCard } from 'lucide-react';
-import { StorageService } from '../services/storage';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 interface DashboardProps {
-  sales: Sale[];
+  sales: Sale[]; // We might ignore this prop now in favor of direct DB access for realtime updates, but keeping for compatibility
   lang: Language;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ sales, lang }) => {
+const Dashboard: React.FC<DashboardProps> = ({ lang }) => {
   const t = TRANSLATIONS[lang];
-  const products = StorageService.getProducts();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-
-  useEffect(() => {
-    setExpenses(StorageService.getExpenses());
-  }, []);
+  
+  // Realtime Data Hooks
+  const products = useLiveQuery(() => db.products.toArray(), []) || [];
+  const sales = useLiveQuery(() => db.sales.toArray(), []) || [];
+  const expenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
 
   // Calculate stats
   const stats = useMemo(() => {

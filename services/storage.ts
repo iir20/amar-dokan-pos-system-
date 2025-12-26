@@ -1,129 +1,113 @@
 import { Product, Sale, CartItem, User, Expense } from '../types';
-import { INITIAL_PRODUCTS } from '../constants';
+import { db } from '../db';
 
-const KEYS = {
-  PRODUCTS: 'pos_products',
-  SALES: 'pos_sales',
-  EXPENSES: 'pos_expenses',
-  USER: 'pos_user',
-  SESSION: 'pos_session'
-};
+// This service now acts as an abstraction layer over Dexie DB
+// Note: All return types are now Promises due to IndexedDB being async
 
-// Simulate Database Operations
 export const StorageService = {
   // --- Products ---
-  getProducts: (): Product[] => {
-    const stored = localStorage.getItem(KEYS.PRODUCTS);
-    if (!stored) {
-      localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-      return INITIAL_PRODUCTS;
-    }
-    return JSON.parse(stored);
+  getProducts: async (): Promise<Product[]> => {
+    return await db.products.toArray();
   },
 
-  updateProductStock: (cartItems: CartItem[]) => {
-    const products = StorageService.getProducts();
-    const updatedProducts = products.map(p => {
-      const cartItem = cartItems.find(c => c.id === p.id);
-      if (cartItem) {
-        return { ...p, stock: p.stock - cartItem.quantity };
-      }
-      return p;
+  updateProductStock: async (cartItems: CartItem[]) => {
+    // Casting db to any to fix TypeScript error where transaction method is not recognized on AmarDokanDB
+    return await (db as any).transaction('rw', db.products, async () => {
+        for (const item of cartItems) {
+            const product = await db.products.get(item.id);
+            if (product) {
+                const newStock = product.stock - item.quantity;
+                await db.products.update(item.id, { stock: newStock });
+            }
+        }
     });
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(updatedProducts));
-    return updatedProducts;
   },
 
-  saveProduct: (product: Product) => {
-    const products = StorageService.getProducts();
-    const index = products.findIndex(p => p.id === product.id);
-    if (index >= 0) {
-      products[index] = product;
-    } else {
-      products.push(product);
-    }
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-    return products;
+  saveProduct: async (product: Product) => {
+    // Check if exists
+    const exists = await db.products.get(product.id);
+    const action = exists ? 'update' : 'create';
+    
+    return db.performAction('products', action, product, async () => {
+        return await db.products.put(product);
+    });
   },
 
-  deleteProduct: (id: string) => {
-    let products = StorageService.getProducts();
-    products = products.filter(p => p.id !== id);
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-    return products;
+  deleteProduct: async (id: string) => {
+    return db.performAction('products', 'delete', { id }, async () => {
+        return await db.products.delete(id);
+    });
   },
 
   // --- Sales ---
-  getSales: (): Sale[] => {
-    const stored = localStorage.getItem(KEYS.SALES);
-    return stored ? JSON.parse(stored) : [];
+  getSales: async (): Promise<Sale[]> => {
+    return await db.sales.orderBy('date').reverse().toArray();
   },
 
-  addSale: (sale: Sale) => {
-    const sales = StorageService.getSales();
-    sales.push(sale);
-    localStorage.setItem(KEYS.SALES, JSON.stringify(sales));
-    
-    // Update inventory
-    StorageService.updateProductStock(sale.items);
+  addSale: async (sale: Sale) => {
+    return db.performAction('sales', 'create', sale, async () => {
+        await db.sales.add(sale);
+        await StorageService.updateProductStock(sale.items);
+    });
   },
 
   // --- Expenses ---
-  getExpenses: (): Expense[] => {
-    const stored = localStorage.getItem(KEYS.EXPENSES);
-    return stored ? JSON.parse(stored) : [];
+  getExpenses: async (): Promise<Expense[]> => {
+    return await db.expenses.toArray();
   },
 
-  addExpense: (expense: Expense) => {
-    const expenses = StorageService.getExpenses();
-    expenses.push(expense);
-    localStorage.setItem(KEYS.EXPENSES, JSON.stringify(expenses));
+  addExpense: async (expense: Expense) => {
+    return db.performAction('expenses', 'create', expense, async () => {
+        return await db.expenses.add(expense);
+    });
   },
 
-  deleteExpense: (id: string) => {
-    let expenses = StorageService.getExpenses();
-    expenses = expenses.filter(e => e.id !== id);
-    localStorage.setItem(KEYS.EXPENSES, JSON.stringify(expenses));
+  deleteExpense: async (id: string) => {
+    return db.performAction('expenses', 'delete', { id }, async () => {
+        return await db.expenses.delete(id);
+    });
   },
 
   // --- Auth ---
-  registerUser: (user: User) => {
-    localStorage.setItem(KEYS.USER, JSON.stringify(user));
-    localStorage.setItem(KEYS.SESSION, 'true');
+  // Using LocalStorage for Session token only, DB for User Data
+  
+  registerUser: async (user: User) => {
+    await db.users.put(user);
+    localStorage.setItem('pos_session_user', user.username);
     return user;
   },
 
-  loginUser: (username: string, pin: string): boolean => {
-    const stored = localStorage.getItem(KEYS.USER);
-    if (!stored) return false;
-    const user: User = JSON.parse(stored);
-    if (user.username === username && user.pin === pin) {
-      localStorage.setItem(KEYS.SESSION, 'true');
+  loginUser: async (username: string, pin: string): Promise<boolean> => {
+    const user = await db.users.get(username);
+    if (user && user.pin === pin) {
+      localStorage.setItem('pos_session_user', username);
       return true;
     }
     return false;
   },
 
-  updateUser: (user: Partial<User>) => {
-    const currentUser = StorageService.getCurrentUser();
+  updateUser: async (user: Partial<User>) => {
+    const currentUser = await StorageService.getCurrentUser();
     if (currentUser) {
       const updatedUser = { ...currentUser, ...user };
-      localStorage.setItem(KEYS.USER, JSON.stringify(updatedUser));
+      await db.users.put(updatedUser);
       return updatedUser;
     }
     return null;
   },
 
   isLoggedIn: (): boolean => {
-    return localStorage.getItem(KEYS.SESSION) === 'true';
+    return !!localStorage.getItem('pos_session_user');
   },
 
-  getCurrentUser: (): User | null => {
-    const stored = localStorage.getItem(KEYS.USER);
-    return stored ? JSON.parse(stored) : null;
+  getCurrentUser: async (): Promise<User | null> => {
+    const username = localStorage.getItem('pos_session_user');
+    if (!username) return null;
+    const user = await db.users.get(username);
+    return user || null;
   },
 
   logout: () => {
-    localStorage.removeItem(KEYS.SESSION);
+    localStorage.removeItem('pos_session_user');
   }
 };

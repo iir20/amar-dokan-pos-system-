@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, ShoppingCart, Package, Settings, LogOut, Menu, X, Languages, ClipboardList, Wallet, UserCircle } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, Settings, LogOut, Menu, X, Languages, ClipboardList, Wallet, UserCircle, Wifi, WifiOff } from 'lucide-react';
 import POS from './components/POS';
 import Dashboard from './components/Dashboard';
 import Invoice from './components/Invoice';
@@ -11,6 +11,8 @@ import Profile from './components/Profile';
 import { StorageService } from './services/storage';
 import { Sale, Language, Product } from './types';
 import { TRANSLATIONS } from './constants';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from './db';
 
 type View = 'dashboard' | 'pos' | 'inventory' | 'dueList' | 'expenses' | 'profile';
 
@@ -18,16 +20,25 @@ const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(StorageService.isLoggedIn());
   const [currentView, setCurrentView] = useState<View>('pos');
   const [lang, setLang] = useState<Language>('en');
-  const [sales, setSales] = useState<Sale[]>([]);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Online Status
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // Reactive Sync Queue count to show pending items
+  const pendingSyncCount = useLiveQuery(() => db.syncQueue.count(), []) || 0;
 
-  // Initial Data Load
   useEffect(() => {
-    if (isAuthenticated) {
-        setSales(StorageService.getSales());
-    }
-  }, [isAuthenticated]);
+    const handleStatusChange = () => {
+        setIsOnline(navigator.onLine);
+    };
+    window.addEventListener('online', handleStatusChange);
+    window.addEventListener('offline', handleStatusChange);
+    return () => {
+        window.removeEventListener('online', handleStatusChange);
+        window.removeEventListener('offline', handleStatusChange);
+    };
+  }, []);
 
   const handleLogin = () => {
       setIsAuthenticated(true);
@@ -39,8 +50,7 @@ const App = () => {
   };
 
   const handleCheckout = (sale: Sale) => {
-    StorageService.addSale(sale);
-    setSales(StorageService.getSales());
+    // Sale is already added to DB in POS component
     setLastSale(sale);
   };
 
@@ -112,6 +122,17 @@ const App = () => {
         </nav>
 
         <div className="absolute bottom-0 w-full p-4 border-t bg-gray-50 space-y-4">
+           {/* Connectivity Status */}
+           <div className={`flex items-center gap-2 px-2 text-xs font-medium ${isOnline ? 'text-green-600' : 'text-orange-500'}`}>
+                {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+                <span>{isOnline ? 'Online' : 'Offline Mode'}</span>
+                {pendingSyncCount > 0 && (
+                    <span className="bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full ml-auto">
+                        {pendingSyncCount} Pending
+                    </span>
+                )}
+           </div>
+
            <div className="flex items-center justify-between px-2">
               <button 
                 onClick={() => setLang(prev => prev === 'en' ? 'bn' : 'en')}
@@ -146,9 +167,10 @@ const App = () => {
         {/* View Switcher */}
         <div className="flex-1 overflow-auto bg-gray-50">
           {currentView === 'pos' && <POS lang={lang} onCheckout={handleCheckout} />}
-          {currentView === 'dashboard' && <Dashboard sales={sales} lang={lang} />}
+          {currentView === 'dashboard' && <Dashboard sales={[]} lang={lang} />} 
+          {/* Note: passing empty sales array as Dashboard now fetches its own data */}
           {currentView === 'inventory' && <Inventory lang={lang} />}
-          {currentView === 'dueList' && <DueList sales={sales} lang={lang} onViewInvoice={setLastSale} />}
+          {currentView === 'dueList' && <DueList sales={[]} lang={lang} onViewInvoice={setLastSale} />}
           {currentView === 'expenses' && <Expenses lang={lang} />}
           {currentView === 'profile' && <Profile lang={lang} />}
         </div>

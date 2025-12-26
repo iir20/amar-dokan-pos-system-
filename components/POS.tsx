@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Product, CartItem, Sale, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { Search, Plus, Trash2, ShoppingCart, User, Phone, Edit3 } from 'lucide-react';
+import { Search, Plus, Trash2, ShoppingCart, User, Phone, WifiOff } from 'lucide-react';
 import { StorageService } from '../services/storage';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 interface POSProps {
   lang: Language;
@@ -11,18 +13,15 @@ interface POSProps {
 
 const POS: React.FC<POSProps> = ({ lang, onCheckout }) => {
   const t = TRANSLATIONS[lang];
-  const [products, setProducts] = useState<Product[]>([]);
+  // useLiveQuery makes the products array reactive to DB changes
+  const products = useLiveQuery(() => db.products.toArray(), []) || [];
+  
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
   
-  // New States for Customer & Payment
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [paidAmountInput, setPaidAmountInput] = useState<string>('');
-
-  useEffect(() => {
-    setProducts(StorageService.getProducts());
-  }, []);
 
   const addToCart = (product: Product) => {
     if (product.stock <= 0) {
@@ -86,18 +85,16 @@ const POS: React.FC<POSProps> = ({ lang, onCheckout }) => {
     }));
   };
 
-  // Calculations
   const calculateTotal = () => cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const calculateProfit = () => cart.reduce((acc, item) => acc + ((item.price - item.cost) * item.quantity), 0);
 
   const totalAmount = calculateTotal();
   
-  // Logic for Paid/Due
   const paidAmount = paidAmountInput === '' ? totalAmount : parseFloat(paidAmountInput) || 0;
   const dueAmount = Math.max(0, totalAmount - paidAmount);
   const changeAmount = Math.max(0, paidAmount - totalAmount);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) return;
     
     if (dueAmount > 0 && !customerName.trim()) {
@@ -118,6 +115,8 @@ const POS: React.FC<POSProps> = ({ lang, onCheckout }) => {
       dueAmount: dueAmount
     };
 
+    // Async operation
+    await StorageService.addSale(sale);
     onCheckout(sale);
     
     setCart([]);
@@ -231,7 +230,6 @@ const POS: React.FC<POSProps> = ({ lang, onCheckout }) => {
               <div key={item.id} className="flex items-center gap-3 bg-white border border-gray-100 p-2 rounded-lg shadow-sm">
                 <div className="flex-1 min-w-0">
                   <h4 className="font-medium text-gray-800 text-sm truncate">{lang === 'bn' ? item.nameBn : item.name}</h4>
-                  {/* Editable Price */}
                   <div className="flex items-center text-emerald-600 font-bold text-sm mt-1">
                     <span>৳</span>
                     <input 
@@ -275,7 +273,6 @@ const POS: React.FC<POSProps> = ({ lang, onCheckout }) => {
                 <span>৳{totalAmount.toFixed(2)}</span>
              </div>
              
-             {/* Payment Inputs */}
              <div className="col-span-2 pt-2 border-t">
                  <div className="flex justify-between items-center mb-1">
                     <label className="text-xs font-semibold text-gray-500">{t.paidAmount}</label>
@@ -292,7 +289,6 @@ const POS: React.FC<POSProps> = ({ lang, onCheckout }) => {
                  </div>
              </div>
 
-             {/* Change / Due Display */}
              {dueAmount > 0 ? (
                  <div className="col-span-2 flex justify-between items-center text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
                      <span className="text-sm font-semibold">{t.dueAmount}</span>

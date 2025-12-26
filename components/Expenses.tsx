@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Expense, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 import { StorageService } from '../services/storage';
 import { Plus, Trash2 } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 interface ExpensesProps {
   lang: Language;
@@ -10,18 +12,10 @@ interface ExpensesProps {
 
 const Expenses: React.FC<ExpensesProps> = ({ lang }) => {
   const t = TRANSLATIONS[lang];
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const expenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
   const [formData, setFormData] = useState({ description: '', amount: '', category: 'General' });
 
-  useEffect(() => {
-    loadExpenses();
-  }, []);
-
-  const loadExpenses = () => {
-    setExpenses(StorageService.getExpenses());
-  };
-
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.description || !formData.amount) return;
 
@@ -33,15 +27,13 @@ const Expenses: React.FC<ExpensesProps> = ({ lang }) => {
       date: new Date().toISOString()
     };
 
-    StorageService.addExpense(newExpense);
+    await StorageService.addExpense(newExpense);
     setFormData({ description: '', amount: '', category: 'General' });
-    loadExpenses();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm(t.confirmDelete)) {
-      StorageService.deleteExpense(id);
-      loadExpenses();
+      await StorageService.deleteExpense(id);
     }
   };
 

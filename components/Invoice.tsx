@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sale, Language } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Sale, Language, User } from '../types';
 import { TRANSLATIONS } from '../constants';
 import { Printer, Download, Loader2 } from 'lucide-react';
 import { StorageService } from '../services/storage';
@@ -14,7 +14,16 @@ interface InvoiceProps {
 
 const Invoice: React.FC<InvoiceProps> = ({ sale, lang, onClose }) => {
   const t = TRANSLATIONS[lang];
-  const user = StorageService.getCurrentUser();
+  const [user, setUser] = useState<User | null>(null);
+  
+  useEffect(() => {
+    const fetchUser = async () => {
+        const u = await StorageService.getCurrentUser();
+        setUser(u);
+    };
+    fetchUser();
+  }, []);
+
   const storeName = user?.storeName || 'AMAR DOKAN';
   const address = user?.address || 'Dhaka, Bangladesh';
   const phone = user?.phone || '';

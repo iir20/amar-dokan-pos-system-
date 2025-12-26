@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
 import { TRANSLATIONS } from '../constants';
 import { Language } from '../types';
@@ -12,11 +12,28 @@ interface AuthProps {
 
 const Auth: React.FC<AuthProps> = ({ onLogin, lang, setLang }) => {
   const t = TRANSLATIONS[lang];
-  const [isRegistering, setIsRegistering] = useState(!StorageService.getCurrentUser());
+  // Check if a user exists in DB first to determine register vs login view
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [checkingUser, setCheckingUser] = useState(true);
+
   const [formData, setFormData] = useState({ storeName: '', username: '', pin: '' });
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const checkUser = async () => {
+        const user = await StorageService.getCurrentUser();
+        if (!user) {
+            // If no user in session, check if ANY user exists in DB? 
+            // For simplicity, we assume generic multi-user or single-store behavior
+            // Let's default to login, but if login fails, user can switch to register
+            setIsRegistering(false); 
+        }
+        setCheckingUser(false);
+    };
+    checkUser();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -25,16 +42,19 @@ const Auth: React.FC<AuthProps> = ({ onLogin, lang, setLang }) => {
         setError('All fields are required');
         return;
       }
-      StorageService.registerUser(formData);
+      await StorageService.registerUser(formData);
       onLogin();
     } else {
-      if (StorageService.loginUser(formData.username, formData.pin)) {
+      const success = await StorageService.loginUser(formData.username, formData.pin);
+      if (success) {
         onLogin();
       } else {
         setError('Invalid username or PIN');
       }
     }
   };
+
+  if (checkingUser) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
